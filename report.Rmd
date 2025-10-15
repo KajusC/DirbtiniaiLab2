@@ -1,0 +1,101 @@
+---
+title: "Sentimental AI"
+output: html_document
+---
+
+```{r include=FALSE}
+library(ggplot2)
+library(plotly)
+library(targets)
+library(DET)
+```
+
+# Data overview
+
+All shops sorted by the number of reviews scraped from Facebook or Evertink. Review rating is denoted by color, and it can be noticed that *Lidl*, *Swedbank* with *Rimi* has high counts of bad reviews.
+
+```{r echo=FALSE}
+tar_load(data_overview)
+print(data_overview$shop_counts)
+```
+
+All shops sorted by the proportion of positive reviews. Most shops, starting with *pigu.lt* were evaluated highly positively.
+
+```{r echo=FALSE}
+tar_load(data_overview)
+print(data_overview$shop_balance)
+```
+
+Let's explore the yearly amount of reviews received for all shops. An enormous amount of reviews (~30% of all reviews) was from the year 2017. Last 2018 year's reviews (~15% of all reviews) will be used as testing data here in the machine learning experiments.
+
+```{r echo=FALSE}
+tar_load(data_overview)
+print(data_overview$yearly_counts)
+```
+
+The yearly balance of sentiment shows the proportion of bad reviews increasing with time. Strong class imbalance in training data (for example, if we trained just on the year 2013 reviews) is dangerous for machine learning. Most algorithms will have trouble distinguishing the under-represented class. Nonetheless, some strategies (such as majority downsampling or class weights or SMOTE) exist to help alleviate this problem.
+
+```{r echo=FALSE}
+tar_load(data_overview)
+print(data_overview$yearly_balance)
+```
+
+# Topic modelling
+
+Topic modeling is a method for unsupervised classification and helps in revealing main themes in the text corpus. More details can be found in the textbook [Text Mining with R: A Tidy Approach](https://www.tidytextmining.com/topicmodeling.html) (by Julia Silge and David Robinson) and tutorial [Topic Modeling with R](https://slcladal.github.io/topicmodels.html) (by Martin Schweinberger).
+
+Below we can see the main results of topic modeling using the Correlated Topic Model (an improved variant of Latent Dirichlet Allocation) with 10 topics. Note: *soft* and *hard* rank topics by their popularity, *prop* and *diff* shows how topic popularity differs between sentiment classes.
+
+```{r echo=FALSE}
+tar_load(topic_results)
+print(topic_results['soft'])
+print(topic_results['hard'])
+ggplotly(topic_results$prop)
+ggplotly(topic_results$diff)
+```
+
+# Machine learning
+
+Topic modeling (LDA or CTM) finds topic probabilities, which is helpful for interpretation. Features for machine learning do not need such interpretability, so we switch to an older Latent Semantic Analysis (LSA) technique. More ideas on how topic modeling can help in vectorizing text can be found in the textmineR article on [Text Embeddings](https://www.rtextminer.com/articles/d_text_embeddings.html) (by Thomas W. Jones).
+
+Below we provide some information about testing fold data - time interval and top shops.
+
+```{r echo=FALSE}
+tar_load(train_split)
+print(range(train_split[['FALSE']]$date))
+print(head(sort(table(train_split[['FALSE']]$shop), decreasing=T),10))
+tar_load(lsa_topics)
+```
+
+Several dimensionalities for machine learning features are considered: `r lsa_topics`. Here, the machine learning model is regularized logistic regression, tuned on the training split by internal 3-fold cross-validation. Detection results on the testing split are summarized by performance curves (ROC and DET).
+
+```{r echo=FALSE}
+tar_load(model_performance)
+par(pty="s", mfrow=c(1,2))
+plotROCs(model_performance, xlim=c(0,1))
+plot(model_performance)
+```
+
+Detection results, summarized by the Equal Error Rate (EER) measure:
+
+```{r echo=FALSE}
+tar_read(model_EER_results)
+```
+
+Choosing threshold at EER provides us with a nice confusion matrix:
+
+```{r echo=FALSE}
+tar_read(model_confusions)
+```
+
+# targets pipeline with tar_visnetwork()
+
+```{r echo=FALSE}
+tar_visnetwork(targets_only=T, label="time", level_separation = 160)
+```
+
+# targets pipeline with tar_mermaid()
+
+```{r results = "asis", echo=FALSE}
+cat(c("```mermaid", tar_mermaid(), "```"), sep = "\n")
+```
